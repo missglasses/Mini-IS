@@ -12,5 +12,12 @@
     "amount": 899,
     "day": "Sunday",
     "category": "Bills"
+  },
+  {
+    "id": "1789383524798",
+    "title": "dgdhgfd",
+    "amount": 42,
+    "day": "Monday",
+    "category": "Food"
   }
 ]
