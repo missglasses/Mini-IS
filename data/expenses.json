@@ -1,0 +1,16 @@
+[
+  {
+    "id": "1789382510981",
+    "title": "Meal #1",
+    "amount": 75,
+    "day": "Monday",
+    "category": "Food"
+  },
+  {
+    "id": "1789382659363",
+    "title": "Clothes",
+    "amount": 899,
+    "day": "Sunday",
+    "category": "Bills"
+  }
+]
