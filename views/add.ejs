@@ -1,62 +1,112 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Add Expense</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 30px; background-color: #F5EBDD; }
-        .container { max-width: 500px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
-        .form-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input, select { width: 100%; padding: 8px; box-sizing: border-box; }
-        .btn-submit { background-color: #F2765E; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; }
-        .btn-cancel { text-decoration: none; color: #6c757d; margin-left: 10px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2>Add Weekly Expense</h2>
-        <form action="/add" method="POST">
-            <div class="form-group">
-                <label for="title">Name</label>
-                <input type="text" id="title" name="title" required placeholder="e.g., Groceries">
-            </div>
-            
-            <div class="form-group">
-                <label for="amount">Amount (₱)</label>
-                <input type="number" step="0.01" id="amount" name="amount" required placeholder="0.00">
-            </div>
+const express = require('express');
+const mysql = require('mysql2/promise');
 
-            <div class="form-group">
-                <label for="day">Day</label>
-                <select id="day" name="day" required>
-                    <option value="Monday">Monday</option>
-                    <option value="Tuesday">Tuesday</option>
-                    <option value="Wednesday">Wednesday</option>
-                    <option value="Thursday">Thursday</option>
-                    <option value="Friday">Friday</option>
-                    <option value="Saturday">Saturday</option>
-                    <option value="Sunday">Sunday</option>
-                </select>
-            </div>
+/*
+    Setup:
+    npm init -y
+    npm install express ejs mysql2
+    Import expense_db.sql first, then: node server.js
+*/
 
-            <div class="form-group">
-                <label for="category">Category</label>
-                <select id="category" name="category" required>
-                    <option value="Food">Food</option>
-                    <option value="Transport">Transport</option>
-                    <option value="Entertainment">Entertainment</option>
-                    <option value="Bills">Bills</option>
-                    <option value="Bills">Shopping</option>
-                    <option value="Bills">Health</option>
-                    <option value="Other">Other</option>
-                </select>
-            </div>
+const app = express();
+const PORT = 3000;
 
-            <button type="submit" class="btn-submit">Add Expense</button>
-            <a href="/" class="btn-cancel">Cancel</a>
-        </form>
-    </div>
-</body>
-</html>
+// Middleware
+app.use(express.urlencoded({ extended: true }));
+app.set('view engine', 'ejs');
+
+// MySQL connection pool
+const db = mysql.createPool({
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    database: 'expense_db',
+    waitForConnections: true,
+    connectionLimit: 10
+});
+
+// Test database connection on startup
+db.getConnection()
+    .then(conn => {
+        console.log('Connected to MySQL');
+        conn.release();
+    })
+    .catch(err => console.error('Database connection failed:', err.message));
+
+// Convert DECIMAL strings from MySQL into numbers for the views
+const normalize = (row) => ({ ...row, amount: parseFloat(row.amount) });
+
+// 1. READ: View all expenses for the week
+app.get('/', async (req, res) => {
+    try {
+        const [rows] = await db.query('SELECT * FROM expenses ORDER BY id DESC');
+        const expenses = rows.map(normalize);
+        const totalAmount = expenses.reduce((sum, item) => sum + item.amount, 0);
+        res.render('index', { expenses, totalAmount });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Database error');
+    }
+});
+
+// 2. CREATE: Render Add Form
+app.get('/add', (req, res) => {
+    res.render('add');
+});
+
+// 2. CREATE: Process Add Form submission
+app.post('/add', async (req, res) => {
+    try {
+        const { title, amount, day, category } = req.body;
+        await db.query(
+            'INSERT INTO expenses (title, amount, day, category) VALUES (?, ?, ?, ?)',
+            [title, parseFloat(amount), day, category]
+        );
+        res.redirect('/');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Database error');
+    }
+});
+
+// 3. UPDATE: Render Edit Form
+app.get('/edit/:id', async (req, res) => {
+    try {
+        const [rows] = await db.query('SELECT * FROM expenses WHERE id = ?', [req.params.id]);
+        if (rows.length === 0) return res.redirect('/');
+        res.render('edit', { expense: normalize(rows[0]) });
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Database error');
+    }
+});
+
+// 3. UPDATE: Process Edit Form submission
+app.post('/edit/:id', async (req, res) => {
+    try {
+        const { title, amount, day, category } = req.body;
+        await db.query(
+            'UPDATE expenses SET title = ?, amount = ?, day = ?, category = ? WHERE id = ?',
+            [title, parseFloat(amount), day, category, req.params.id]
+        );
+        res.redirect('/');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Database error');
+    }
+});
+
+// 4. DELETE: Remove Expense
+app.post('/delete/:id', async (req, res) => {
+    try {
+        await db.query('DELETE FROM expenses WHERE id = ?', [req.params.id]);
+        res.redirect('/');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Database error');
+    }
+});
+
+app.listen(PORT, () => {
+    console.log(`Weekly Expense Tracker running on http://localhost:${PORT}`);
+});

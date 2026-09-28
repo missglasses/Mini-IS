@@ -1,90 +1,206 @@
-const express = require('express');
-const fs = require('fs');
-const path = require('path');
+const express = require("express");
+const mysql = require("mysql2");
 
 const app = express();
 const PORT = 3000;
-const DATA_FILE = path.join(__dirname, 'data', 'expenses.json');
+
+/*
+
+npm init -y
+npm install express ejs mysql2
+
+*/
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
-app.set('view engine', 'ejs');
+app.set("view engine", "ejs");
 
-// Helper functions to read and write JSON data
-const getExpenses = () => {
-    try {
-        const data = fs.readFileSync(DATA_FILE, 'utf8');
-        return JSON.parse(data);
-    } catch (err) {
-        return [];
+
+// Connect to MySQL
+const db = mysql.createConnection({
+    host: "localhost",
+    user: "root",
+    password: "",
+    database: "expense_db"
+});
+
+
+// Test database connection
+db.connect((err) => {
+
+    if (err) {
+        console.error("Database connection failed:", err);
+        return;
     }
-};
 
-const saveExpenses = (expenses) => {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(expenses, null, 2));
-};
+    console.log("Connected to MySQL");
 
-// 1. READ: View all expenses for the week
-app.get('/', (req, res) => {
-    const expenses = getExpenses();
-    const totalAmount = expenses.reduce((sum, item) => sum + parseFloat(item.amount || 0), 0);
-    res.render('index', { expenses, totalAmount });
 });
 
-// 2. CREATE: Render Add Form
-app.get('/add', (req, res) => {
-    res.render('add');
+
+// ========================================
+// 1. READ - View all expenses
+// ========================================
+
+app.get("/", (req, res) => {
+
+    const sql = "SELECT * FROM expenses ORDER BY id DESC";
+
+    db.query(sql, (err, results) => {
+
+        if (err) {
+            console.error(err);
+            return res.status(500).send("Database error");
+        }
+
+        const expenses = results.map(e => ({
+            ...e,
+            amount: parseFloat(e.amount)
+        }));
+
+        const totalAmount = expenses.reduce(
+            (sum, item) => sum + item.amount, 0
+        );
+
+        res.render("index", { expenses, totalAmount });
+
+    });
+
 });
 
-// 2. CREATE: Process Add Form submission
-app.post('/add', (req, res) => {
-    const expenses = getExpenses();
-    const newExpense = {
-        id: Date.now().toString(),
-        title: req.body.title,
-        amount: parseFloat(req.body.amount),
-        day: req.body.day,
-        category: req.body.category
-    };
-    expenses.push(newExpense);
-    saveExpenses(expenses);
-    res.redirect('/');
+
+// ========================================
+// 2. CREATE - Render Add Form
+// ========================================
+
+app.get("/add", (req, res) => {
+    res.render("add");
 });
 
-// 3. UPDATE: Render Edit Form
-app.get('/edit/:id', (req, res) => {
-    const expenses = getExpenses();
-    const expense = expenses.find(e => e.id === req.params.id);
-    if (!expense) return res.redirect('/');
-    res.render('edit', { expense });
+
+// ========================================
+// 2. CREATE - Process Add Form
+// ========================================
+
+app.post("/add", (req, res) => {
+
+    const title = req.body.title;
+    const amount = parseFloat(req.body.amount);
+    const day = req.body.day;
+    const category = req.body.category;
+
+    const sql = `
+        INSERT INTO expenses
+        (title, amount, day, category)
+        VALUES (?, ?, ?, ?)
+    `;
+
+    db.query(sql, [title, amount, day, category], (err, result) => {
+
+        if (err) {
+            console.error(err);
+            return res.status(500).send("Database error");
+        }
+
+        res.redirect("/");
+
+    });
+
 });
 
-// 3. UPDATE: Process Edit Form submission
-app.post('/edit/:id', (req, res) => {
-    let expenses = getExpenses();
-    const index = expenses.findIndex(e => e.id === req.params.id);
-    
-    if (index !== -1) {
-        expenses[index] = {
-            id: req.params.id,
-            title: req.body.title,
-            amount: parseFloat(req.body.amount),
-            day: req.body.day,
-            category: req.body.category
+
+// ========================================
+// 3. UPDATE - Render Edit Form
+// ========================================
+
+app.get("/edit/:id", (req, res) => {
+
+    const sql = "SELECT * FROM expenses WHERE id = ?";
+
+    db.query(sql, [req.params.id], (err, results) => {
+
+        if (err) {
+            console.error(err);
+            return res.status(500).send("Database error");
+        }
+
+        if (results.length === 0) {
+            return res.redirect("/");
+        }
+
+        const expense = {
+            ...results[0],
+            amount: parseFloat(results[0].amount)
         };
-        saveExpenses(expenses);
-    }
-    res.redirect('/');
+
+        res.render("edit", { expense });
+
+    });
+
 });
 
-// 4. DELETE: Remove Expense
-app.post('/delete/:id', (req, res) => {
-    let expenses = getExpenses();
-    expenses = expenses.filter(e => e.id !== req.params.id);
-    saveExpenses(expenses);
-    res.redirect('/');
+
+// ========================================
+// 3. UPDATE - Process Edit Form
+// ========================================
+
+app.post("/edit/:id", (req, res) => {
+
+    const title = req.body.title;
+    const amount = parseFloat(req.body.amount);
+    const day = req.body.day;
+    const category = req.body.category;
+
+    const sql = `
+        UPDATE expenses
+        SET title = ?, amount = ?, day = ?, category = ?
+        WHERE id = ?
+    `;
+
+    db.query(sql, [title, amount, day, category, req.params.id], (err, result) => {
+
+        if (err) {
+            console.error(err);
+            return res.status(500).send("Database error");
+        }
+
+        res.redirect("/");
+
+    });
+
 });
+
+
+// ========================================
+// 4. DELETE - Remove Expense
+// ========================================
+
+app.post("/delete/:id", (req, res) => {
+
+    const sql = "DELETE FROM expenses WHERE id = ?";
+
+    db.query(sql, [req.params.id], (err, result) => {
+
+        if (err) {
+            console.error(err);
+            return res.status(500).send("Database error");
+        }
+
+        res.redirect("/");
+
+    });
+
+});
+
+
+// ========================================
+// Start Server
+// ========================================
 
 app.listen(PORT, () => {
-    console.log(`Weekly Expense Tracker running on http://localhost:${PORT}`);
+
+    console.log(
+        `Weekly Expense Tracker running at http://localhost:${PORT}`
+    );
+
 });
