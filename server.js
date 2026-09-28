@@ -1,5 +1,6 @@
 const express = require("express");
 const mysql = require("mysql2");
+const path = require("path");
 
 const app = express();
 const PORT = 3000;
@@ -14,6 +15,7 @@ npm install express ejs mysql2
 // Middleware
 app.use(express.urlencoded({ extended: true }));
 app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "crud"));
 
 
 // Connect to MySQL
