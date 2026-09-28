@@ -5,12 +5,6 @@ const path = require("path");
 const app = express();
 const PORT = 3000;
 
-/*
-
-npm init -y
-npm install express ejs mysql2
-
-*/
 
 // Middleware
 app.use(express.urlencoded({ extended: true }));
